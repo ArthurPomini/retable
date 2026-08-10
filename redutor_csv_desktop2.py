@@ -141,6 +141,7 @@ class RedutorCSVApp:
         ttk.Label(rows_frame, text="Linha final:").grid(row=0, column=3, sticky="e")
         self.end_row_var = tk.StringVar(value="1000")
         ttk.Entry(rows_frame, textvariable=self.end_row_var, width=10).grid(row=0, column=4, padx=6)
+        ttk.Button(rows_frame, text="Até o final", command=self.preencher_ultima_linha).grid(row=0, column=5, padx=6)
 
         # --- Colunas a excluir ---
         cols_frame = ttk.LabelFrame(content, text="2. Colunas para excluir")
@@ -184,6 +185,38 @@ class RedutorCSVApp:
         self.tree.delete(*self.tree.get_children())
         self.lbl_resultado.config(text="—")
 
+    # ------------------------------------------------------ Detecção automática
+    def _detectar_encoding(self, path):
+        with open(path, "rb") as f:
+            amostra = f.read(65536)
+        if amostra.startswith(b"\xef\xbb\xbf"):
+            return "utf-8-sig"
+        try:
+            amostra.decode("utf-8")
+            return "utf-8"
+        except UnicodeDecodeError:
+            return "latin1"
+
+    def _detectar_separador(self, path, encoding):
+        candidatos = [",", ";", "\t", "|"]
+        try:
+            with open(path, "r", newline="", encoding=encoding, errors="replace") as f:
+                amostra = f.read(65536)
+            dialect = csv.Sniffer().sniff(amostra, delimiters="".join(candidatos))
+            if dialect.delimiter in candidatos:
+                return dialect.delimiter
+        except Exception:
+            pass
+        return ","
+
+    def _contar_linhas_dados(self):
+        """Conta as linhas de dados do arquivo (sem o cabeçalho), lendo em blocos de bytes."""
+        total_quebras = 0
+        with open(self.csv_path, "rb") as f:
+            for bloco in iter(lambda: f.read(1024 * 1024), b""):
+                total_quebras += bloco.count(b"\n")
+        return max(total_quebras - 1, 0)
+
     # ------------------------------------------------------ Ações
     def selecionar_arquivo(self):
         path = filedialog.askopenfilename(filetypes=[("CSV", "*.csv"), ("Todos os arquivos", "*.*")])
@@ -193,8 +226,17 @@ class RedutorCSVApp:
         self.original_size = os.path.getsize(path)
         self.lbl_arquivo.config(text=os.path.basename(path))
         self.lbl_tamanho.config(text=f"Tamanho atual: {self.original_size / 1024 / 1024:.2f} MB")
-        self.status_var.set(f"Arquivo selecionado: {path}")
         self._resetar_estado_arquivo()
+
+        encoding_detectado = self._detectar_encoding(path)
+        self.enc_var.set(encoding_detectado)
+        separador_detectado = self._detectar_separador(path, encoding_detectado)
+        self.sep_var.set("\\t" if separador_detectado == "\t" else separador_detectado)
+
+        self.status_var.set(
+            f"Arquivo selecionado. Detectado automaticamente: separador "
+            f"'{separador_detectado}', codificação '{encoding_detectado}' (confira e ajuste se precisar)."
+        )
 
     def carregar_preview(self):
         if not self.csv_path:
@@ -246,11 +288,16 @@ class RedutorCSVApp:
         if not self.csv_path:
             messagebox.showwarning(APP_TITLE, "Selecione um arquivo CSV primeiro.")
             return
-        total = 0
-        with open(self.csv_path, "rb") as f:
-            for bloco in iter(lambda: f.read(1024 * 1024), b""):
-                total += bloco.count(b"\n")
-        messagebox.showinfo(APP_TITLE, f"Aproximadamente {total - 1:,} linhas de dados.".replace(",", "."))
+        total = self._contar_linhas_dados()
+        messagebox.showinfo(APP_TITLE, f"Aproximadamente {total:,} linhas de dados.".replace(",", "."))
+
+    def preencher_ultima_linha(self):
+        if not self.csv_path:
+            messagebox.showwarning(APP_TITLE, "Selecione um arquivo CSV primeiro.")
+            return
+        total = self._contar_linhas_dados()
+        self.end_row_var.set(str(total))
+        self.status_var.set(f"Linha final preenchida com {total:,} (última linha do arquivo).".replace(",", "."))
 
     def iniciar_processamento(self):
         if not self.csv_path:
@@ -258,10 +305,6 @@ class RedutorCSVApp:
             return
         if not self.columns:
             messagebox.showwarning(APP_TITLE, "Clique em 'Carregar colunas / prévia' primeiro.")
-            return
-
-        destino = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
-        if not destino:
             return
 
         cols_excluir_idx = set(self.cols_listbox.curselection())
@@ -282,6 +325,22 @@ class RedutorCSVApp:
             if start_row > end_row:
                 messagebox.showerror(APP_TITLE, "A linha inicial precisa ser menor ou igual à linha final.")
                 return
+            if start_row < 1:
+                messagebox.showerror(APP_TITLE, "A linha inicial precisa ser maior ou igual a 1.")
+                return
+
+            total_linhas = self._contar_linhas_dados()
+            if end_row > total_linhas:
+                messagebox.showerror(
+                    APP_TITLE,
+                    f"A linha final ({end_row}) é maior que o total de linhas do arquivo "
+                    f"({total_linhas}).\n\nAjuste o intervalo ou use o botão 'Até o final'.",
+                )
+                return
+
+        destino = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if not destino:
+            return
 
         sep = self._sep_real()
         encoding = self.enc_var.get()
