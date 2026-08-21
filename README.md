@@ -1,5 +1,3 @@
-Table Reductor é uma ferramenta que tem o intuito de auxiliar na manipulação de dados de grandes tabelas.
+**ReTable** is a tool designed to help manipulate data in large tables.
 
-Sabe quando você foi tentar subir uma tabela em uma planilha, e apareceu um aviso na tela dizendo "Tabela muito grande, remova linhas/colunas para carregar."? Pois bem, com o Table Reductor você poderá remover quantas linhas ou colunas desejar para diminuir o tamanho de sua tabela.
-
-
+You know that moment when you try to upload a table to a spreadsheet, and an alert pops up saying, *"Table too large, remove rows/columns to load"*? Well, with ReTable, you can remove as many rows or columns as you need to shrink your table down to size.
