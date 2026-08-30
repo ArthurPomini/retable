@@ -7,7 +7,7 @@ from typing import Optional
 
 from models import FilterConfig, ProcessResult
 from csv_processor import CSVAnalyzer, CSVReducer
-from components import ScrollableFrame, PreviewTable
+from components import ScrollableFrame, PreviewTable, ColumnSelector
 
 APP_TITLE = "Redutor de CSV"
 PREVIEW_ROWS = 20
@@ -113,17 +113,14 @@ class MainWindow:
 
         btn_frame = ttk.Frame(cols_frame)
         btn_frame.pack(side="left", fill="y", padx=8, pady=8)
-        ttk.Button(btn_frame, text="Marcar/Desmarcar todas", command=self.alternar_todas_colunas).pack(
-            fill="x", pady=2
-        )
+        ttk.Button(
+            btn_frame,
+            text="Marcar/Desmarcar todas",
+            command=self.alternar_todas_colunas,
+        ).pack(fill="x", pady=2)
 
-        list_frame = ttk.Frame(cols_frame)
-        list_frame.pack(side="left", fill="both", expand=True, padx=8, pady=8)
-        self.cols_listbox = tk.Listbox(list_frame, selectmode="extended", height=6, exportselection=False)
-        cols_scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.cols_listbox.yview)
-        self.cols_listbox.configure(yscrollcommand=cols_scroll.set)
-        self.cols_listbox.pack(side="left", fill="both", expand=True)
-        cols_scroll.pack(side="left", fill="y")
+        self.col_selector = ColumnSelector(cols_frame, height=130)
+        self.col_selector.pack(side="left", fill="both", expand=True, padx=8, pady=8)
 
     def _build_action_section(self, parent: ttk.Frame, pad: dict):
         action_frame = ttk.Frame(parent)
@@ -149,7 +146,7 @@ class MainWindow:
 
     def _reset_file_state(self):
         self.columns = []
-        self.cols_listbox.delete(0, "end")
+        self.col_selector.clear()
         self.preview_table.clear()
         self.lbl_resultado.config(text="—")
 
@@ -194,21 +191,12 @@ class MainWindow:
 
         self.columns = preview.columns
         self.preview_table.update_data(preview.columns, preview.rows)
-
-        self.cols_listbox.delete(0, "end")
-        for col in self.columns:
-            self.cols_listbox.insert("end", col)
+        self.col_selector.set_columns(self.columns)
 
         self.status_var.set(f"{len(self.columns)} colunas carregadas.")
 
     def alternar_todas_colunas(self):
-        total = self.cols_listbox.size()
-        if total == 0:
-            return
-        if len(self.cols_listbox.curselection()) == total:
-            self.cols_listbox.select_clear(0, "end")
-        else:
-            self.cols_listbox.select_set(0, "end")
+        self.col_selector.toggle_all()
 
     def contar_linhas(self):
         if not self.csv_path:
@@ -226,7 +214,7 @@ class MainWindow:
         self.status_var.set(f"Linha final preenchida com {total:,} (última linha do arquivo).".replace(",", "."))
 
     def _validate_filter_inputs(self) -> Optional[FilterConfig]:
-        cols_excluir_idx = set(self.cols_listbox.curselection())
+        cols_excluir_idx = self.col_selector.get_selected_indices()
         keep_idx = [i for i in range(len(self.columns)) if i not in cols_excluir_idx]
         if not keep_idx:
             messagebox.showwarning(APP_TITLE, "Você excluiu todas as colunas — não sobra nada para salvar.")
